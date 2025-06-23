@@ -8810,6 +8810,7 @@ struct spdk_blob_write_extent_page_ctx {
 
 	uint32_t			extent;
 	struct spdk_blob_md_page	*page;
+	uint32_t			crc;
 };
 
 static void
@@ -8857,6 +8858,9 @@ blob_persist_extent_page_cpl(spdk_bs_sequence_t *seq, void *cb_arg, int bserrno)
 {
 	struct spdk_blob_write_extent_page_ctx *ctx = cb_arg;
 
+	if (ctx->crc != spdk_crc32c_update(ctx->page, SPDK_BS_PAGE_SIZE, BLOB_CRC32C_INITIAL)) {
+		SPDK_ERRLOG("concurrcy occur.\n");
+	}
 	free(ctx);
 	bs_sequence_finish(seq, bserrno);
 }
@@ -8870,6 +8874,7 @@ blob_write_extent_page_ready(spdk_bs_sequence_t *seq, void *cb_arg, int bserrno)
 		blob_persist_extent_page_cpl(seq, ctx, bserrno);
 		return;
 	}
+	ctx->crc = spdk_crc32c_update(ctx->page, SPDK_BS_PAGE_SIZE, BLOB_CRC32C_INITIAL);
 	bs_sequence_write_dev(seq, ctx->page, bs_md_page_to_lba(ctx->bs, ctx->extent),
 			      bs_byte_to_lba(ctx->bs, ctx->bs->md_page_size),
 			      blob_persist_extent_page_cpl, ctx);
